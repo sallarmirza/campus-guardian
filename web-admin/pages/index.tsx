@@ -4,6 +4,8 @@ import { useQuery } from '@tanstack/react-query'
 import Layout from '../components/Layout'
 import DashboardStats from '../components/dashboard/DashboardStats'
 import RecentIncidents from '../components/dashboard/RecentIncidents'
+import LiveStreamVideo from '../components/dashboard/LiveStreamVideo'
+import LiveNotifications from '../components/dashboard/LiveNotifications'
 import { dashboardService } from '../services/dashboard'
 
 const Dashboard: NextPage = () => {
@@ -51,44 +53,74 @@ const Dashboard: NextPage = () => {
         {/* Stats Cards */}
         <DashboardStats stats={stats} loading={statsLoading} />
 
+        {/* Live Notifications - Hidden component that handles real-time alerts */}
+        <LiveNotifications />
+
         {/* Main Content Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Recent Incidents */}
-          <RecentIncidents incidents={incidents} loading={incidentsLoading} />
+        <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+          {/* Left Column - Recent Incidents */}
+          <div className="xl:col-span-1">
+            <RecentIncidents incidents={incidents} loading={incidentsLoading} />
+          </div>
           
-          {/* Quick Actions */}
-          <div className="bg-white rounded-lg shadow border border-gray-200 p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Quick Actions</h3>
-            <div className="space-y-3">
-              <button className="w-full text-left p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
-                <div className="flex items-center space-x-3">
-                  <span className="text-2xl">👥</span>
-                  <div>
-                    <p className="font-medium text-gray-900">Manage Students</p>
-                    <p className="text-sm text-gray-600">Add, edit, or view student profiles</p>
+          {/* Right Column - Live Stream and Quick Actions */}
+          <div className="xl:col-span-2 space-y-6">
+            {/* Live Stream Video */}
+            <div className="bg-white rounded-lg shadow border border-gray-200 p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-gray-900">Live Camera Feed</h3>
+                <div className="text-sm text-gray-500">Main Campus Camera</div>
+              </div>
+              <LiveStreamVideo 
+                cameraId="main-campus" 
+                className="h-64 md:h-80 lg:h-96" 
+              />
+            </div>
+
+            {/* Quick Actions */}
+            <div className="bg-white rounded-lg shadow border border-gray-200 p-6">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">Quick Actions</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <button className="text-left p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
+                  <div className="flex items-center space-x-3">
+                    <span className="text-2xl">👥</span>
+                    <div>
+                      <p className="font-medium text-gray-900">Manage Students</p>
+                      <p className="text-sm text-gray-600">Add, edit, or view student profiles</p>
+                    </div>
                   </div>
-                </div>
-              </button>
-              
-              <button className="w-full text-left p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
-                <div className="flex items-center space-x-3">
-                  <span className="text-2xl">📹</span>
-                  <div>
-                    <p className="font-medium text-gray-900">Camera Management</p>
-                    <p className="text-sm text-gray-600">Monitor and configure cameras</p>
+                </button>
+                
+                <button className="text-left p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
+                  <div className="flex items-center space-x-3">
+                    <span className="text-2xl">📹</span>
+                    <div>
+                      <p className="font-medium text-gray-900">Camera Management</p>
+                      <p className="text-sm text-gray-600">Monitor and configure cameras</p>
+                    </div>
                   </div>
-                </div>
-              </button>
-              
-              <button className="w-full text-left p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
-                <div className="flex items-center space-x-3">
-                  <span className="text-2xl">📊</span>
-                  <div>
-                    <p className="font-medium text-gray-900">View Reports</p>
-                    <p className="text-sm text-gray-600">Generate and export analytics</p>
+                </button>
+                
+                <button className="text-left p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
+                  <div className="flex items-center space-x-3">
+                    <span className="text-2xl">📊</span>
+                    <div>
+                      <p className="font-medium text-gray-900">View Reports</p>
+                      <p className="text-sm text-gray-600">Generate and export analytics</p>
+                    </div>
                   </div>
-                </div>
-              </button>
+                </button>
+
+                <button className="text-left p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
+                  <div className="flex items-center space-x-3">
+                    <span className="text-2xl">🔔</span>
+                    <div>
+                      <p className="font-medium text-gray-900">Alerts & Settings</p>
+                      <p className="text-sm text-gray-600">Configure notification preferences</p>
+                    </div>
+                  </div>
+                </button>
+              </div>
             </div>
           </div>
         </div>

@@ -26,11 +26,16 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
   const [connected, setConnected] = useState(false)
 
   useEffect(() => {
-    // Disable socket connection for now since backend isn't running
-    // Uncomment this when backend is ready
-    /*
+    // Create socket connection with error handling
     const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:3001'
-    const newSocket = io(socketUrl)
+    const newSocket = io(socketUrl, {
+      autoConnect: true,
+      reconnection: true,
+      reconnectionAttempts: 5,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
+      timeout: 20000,
+    })
 
     newSocket.on('connect', () => {
       setConnected(true)
@@ -42,14 +47,25 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
       console.log('Disconnected from socket server')
     })
 
+    newSocket.on('connect_error', (error) => {
+      console.log('Socket connection error:', error.message)
+      setConnected(false)
+    })
+
+    newSocket.on('reconnect', (attemptNumber) => {
+      console.log('Reconnected to socket server after', attemptNumber, 'attempts')
+      setConnected(true)
+    })
+
+    newSocket.on('reconnect_error', (error) => {
+      console.log('Socket reconnection error:', error.message)
+    })
+
     setSocket(newSocket)
 
     return () => {
       newSocket.close()
     }
-    */
-    
-    console.log('Socket connection disabled - backend not running')
   }, [])
 
   const value = {
