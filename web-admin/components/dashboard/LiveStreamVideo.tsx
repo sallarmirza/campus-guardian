@@ -1,214 +1,258 @@
-// mobile-app/src/components/camera/LiveStreamView.tsx
-import React, { useState, useRef, useEffect } from 'react';
-import {
-  View,
-  Text,
-  TouchableOpacity,
-  StyleSheet,
-  Alert,
-} from 'react-native';
-import { Camera } from 'expo-camera';
-import { MaterialIcons } from '@expo/vector-icons';
-import { useCameraContext } from '../../context/CameraContext';
-import { useAuth } from '../../context/AuthContext';
-import io from 'socket.io-client';
+import React, { useEffect, useRef, useState } from 'react';
+import { PlayIcon, StopIcon } from '@heroicons/react/24/solid';
+import { useSocket } from '../../context/SocketContext';
+import toast from 'react-hot-toast';
 
-interface LiveStreamViewProps {
-  onStreamEnd: () => void;
+interface LiveStreamVideoProps {
+  cameraId?: string;
+  className?: string;
 }
 
-const LiveStreamView: React.FC<LiveStreamViewProps> = ({ onStreamEnd }) => {
-  const [isStreaming, setIsStreaming] = useState(false);
-  const [streamSession, setStreamSession] = useState<any>(null);
+interface StreamData {
+  sessionId: string;
+  frame: string;
+  timestamp: number;
+  cameraId?: string;
+}
+
+const LiveStreamVideo: React.FC<LiveStreamVideoProps> = ({ 
+  cameraId = 'default',
+  className = '' 
+}) => {
+  const [isConnected, setIsConnected] = useState(false);
+  const [currentFrame, setCurrentFrame] = useState<string | null>(null);
   const [viewerCount, setViewerCount] = useState(0);
-  const { user } = useAuth();
-  const { deviceInfo } = useCameraContext();
-  const cameraRef = useRef<Camera>(null);
-  const socketRef = useRef<any>(null);
+  const [lastUpdate, setLastUpdate] = useState<number>(Date.now());
+  const [streamStatus, setStreamStatus] = useState<'idle' | 'connecting' | 'streaming' | 'error'>('idle');
+  
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const { socket } = useSocket();
+  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Connect to live stream
   useEffect(() => {
-    // Initialize socket connection for live streaming
-    const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3001';
-    socketRef.current = io(API_URL, {
-      auth: {
-        token: user?.token
-      }
-    });
+    if (!socket) return;
 
-    socketRef.current.on('stream_viewer_count', (count: number) => {
-      setViewerCount(count);
-    });
+    const handleConnect = () => {
+      setIsConnected(true);
+      setStreamStatus('connecting');
+      // Join camera stream room
+      socket.emit('join_stream', { cameraId });
+    };
 
-    return () => {
-      if (socketRef.current) {
-        socketRef.current.disconnect();
+    const handleDisconnect = () => {
+      setIsConnected(false);
+      setStreamStatus('error');
+      setCurrentFrame(null);
+    };
+
+    const handleStreamFrame = (data: StreamData) => {
+      if (data.cameraId === cameraId || !data.cameraId) {
+        setCurrentFrame(data.frame);
+        setLastUpdate(Date.now());
+        setStreamStatus('streaming');
       }
     };
-  }, []);
 
-  const startLiveStream = async () => {
-    try {
-      setIsStreaming(true);
-      
-      // Start recording
-      if (cameraRef.current) {
-        const video = await cameraRef.current.recordAsync({
-          quality: Camera.Constants.VideoQuality['720p'],
-          maxDuration: 3600, // 1 hour max
-        });
-        
-        // TODO: Implement actual streaming protocol (WebRTC, RTMP, etc.)
-        // For now, we'll simulate with periodic frame captures
-        
-        setStreamSession({
-          id: `stream_${Date.now()}`,
-          startedAt: new Date(),
-        });
+    const handleViewerCount = (data: { cameraId: string; count: number }) => {
+      if (data.cameraId === cameraId) {
+        setViewerCount(data.count);
       }
-    } catch (error) {
-      setIsStreaming(false);
-      Alert.alert('Stream Error', 'Failed to start live stream');
+    };
+
+    const handleStreamError = (error: { message: string }) => {
+      setStreamStatus('error');
+      toast.error(`Stream error: ${error.message}`);
+    };
+
+    // Socket event listeners
+    socket.on('connect', handleConnect);
+    socket.on('disconnect', handleDisconnect);
+    socket.on('stream_frame', handleStreamFrame);
+    socket.on('stream_viewer_count', handleViewerCount);
+    socket.on('stream_error', handleStreamError);
+
+    // Initial connection check
+    if (socket.connected) {
+      handleConnect();
+    }
+
+    return () => {
+      socket.off('connect', handleConnect);
+      socket.off('disconnect', handleDisconnect);
+      socket.off('stream_frame', handleStreamFrame);
+      socket.off('stream_viewer_count', handleViewerCount);
+      socket.off('stream_error', handleStreamError);
+      
+      // Leave stream room
+      socket.emit('leave_stream', { cameraId });
+      
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+      }
+    };
+  }, [socket, cameraId]);
+
+  // Render frame to canvas
+  useEffect(() => {
+    if (!currentFrame || !canvasRef.current) return;
+
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const img = new Image();
+    img.onload = () => {
+      // Clear canvas
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      
+      // Calculate aspect ratio and draw
+      const aspectRatio = img.width / img.height;
+      let drawWidth = canvas.width;
+      let drawHeight = canvas.width / aspectRatio;
+      
+      if (drawHeight > canvas.height) {
+        drawHeight = canvas.height;
+        drawWidth = canvas.height * aspectRatio;
+      }
+      
+      const x = (canvas.width - drawWidth) / 2;
+      const y = (canvas.height - drawHeight) / 2;
+      
+      ctx.drawImage(img, x, y, drawWidth, drawHeight);
+    };
+    
+    img.src = `data:image/jpeg;base64,${currentFrame}`;
+  }, [currentFrame]);
+
+  // Auto-reconnect logic
+  useEffect(() => {
+    if (streamStatus === 'error' && socket) {
+      reconnectTimeoutRef.current = setTimeout(() => {
+        if (socket.connected) {
+          socket.emit('join_stream', { cameraId });
+          setStreamStatus('connecting');
+        }
+      }, 3000);
+    }
+
+    return () => {
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+      }
+    };
+  }, [streamStatus, socket, cameraId]);
+
+  const handleManualReconnect = () => {
+    if (!socket) return;
+    
+    setStreamStatus('connecting');
+    socket.emit('join_stream', { cameraId });
+    toast.loading('Reconnecting to stream...', { id: 'reconnect' });
+  };
+
+  const getStatusColor = () => {
+    switch (streamStatus) {
+      case 'streaming': return 'text-green-500';
+      case 'connecting': return 'text-yellow-500';
+      case 'error': return 'text-red-500';
+      default: return 'text-gray-500';
     }
   };
 
-  const stopLiveStream = () => {
-    setIsStreaming(false);
-    setStreamSession(null);
-    if (cameraRef.current) {
-      cameraRef.current.stopRecording();
+  const getStatusText = () => {
+    switch (streamStatus) {
+      case 'streaming': return 'LIVE';
+      case 'connecting': return 'CONNECTING';
+      case 'error': return 'ERROR';
+      default: return 'OFFLINE';
     }
-    onStreamEnd();
   };
+
+  const isStreamActive = Date.now() - lastUpdate < 5000; // Consider active if updated in last 5s
 
   return (
-    <View style={styles.container}>
-      <Camera
-        ref={cameraRef}
-        style={styles.camera}
-        type={Camera.Constants.Type.back}
-        ratio="16:9"
-      >
-        <View style={styles.overlay}>
-          {/* Stream Status Header */}
-          <View style={styles.header}>
-            {isStreaming && (
-              <View style={styles.liveIndicator}>
-                <View style={styles.liveDot} />
-                <Text style={styles.liveText}>LIVE</Text>
-                <Text style={styles.viewerText}>👥 {viewerCount}</Text>
-              </View>
-            )}
-          </View>
-
-          {/* Stream Controls */}
-          <View style={styles.controls}>
-            {!isStreaming ? (
-              <TouchableOpacity style={styles.startButton} onPress={startLiveStream}>
-                <MaterialIcons name="videocam" size={32} color="white" />
-                <Text style={styles.buttonText}>Start Live Stream</Text>
-              </TouchableOpacity>
-            ) : (
-              <TouchableOpacity style={styles.stopButton} onPress={stopLiveStream}>
-                <MaterialIcons name="stop" size={32} color="white" />
-                <Text style={styles.buttonText}>Stop Stream</Text>
-              </TouchableOpacity>
-            )}
-          </View>
-
-          {/* Stream Info */}
-          {isStreaming && streamSession && (
-            <View style={styles.streamInfo}>
-              <Text style={styles.streamText}>
-                🔴 Streaming to Admin Panel
-              </Text>
-              <Text style={styles.streamText}>
-                Duration: {Math.floor((Date.now() - new Date(streamSession.startedAt).getTime()) / 1000)}s
-              </Text>
-            </View>
+    <div className={`relative bg-gray-900 rounded-lg overflow-hidden ${className}`}>
+      {/* Video Canvas */}
+      <canvas
+        ref={canvasRef}
+        width={640}
+        height={360}
+        className="w-full h-full object-contain"
+        style={{ aspectRatio: '16/9' }}
+      />
+      
+      {/* Overlay */}
+      <div className="absolute inset-0 pointer-events-none">
+        {/* Status Indicator */}
+        <div className="absolute top-4 left-4 flex items-center space-x-2">
+          <div className={`flex items-center space-x-2 bg-black bg-opacity-70 px-3 py-1 rounded-full text-sm font-medium ${getStatusColor()}`}>
+            <div className={`w-2 h-2 rounded-full ${streamStatus === 'streaming' && isStreamActive ? 'bg-red-500 animate-pulse' : 'bg-gray-400'}`} />
+            <span>{getStatusText()}</span>
+          </div>
+          
+          {streamStatus === 'streaming' && (
+            <div className="bg-black bg-opacity-70 px-3 py-1 rounded-full text-sm text-white">
+              👥 {viewerCount}
+            </div>
           )}
-        </View>
-      </Camera>
-    </View>
+        </div>
+
+        {/* Camera Info */}
+        <div className="absolute top-4 right-4">
+          <div className="bg-black bg-opacity-70 px-3 py-1 rounded-full text-sm text-white">
+            Camera: {cameraId}
+          </div>
+        </div>
+
+        {/* Error State */}
+        {streamStatus === 'error' && (
+          <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50">
+            <div className="text-center text-white">
+              <StopIcon className="w-12 h-12 mx-auto mb-4 text-red-500" />
+              <p className="text-lg font-medium mb-2">Stream Unavailable</p>
+              <p className="text-sm text-gray-300 mb-4">Unable to connect to camera feed</p>
+              <button
+                onClick={handleManualReconnect}
+                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors pointer-events-auto"
+              >
+                Retry Connection
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Loading State */}
+        {streamStatus === 'connecting' && (
+          <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50">
+            <div className="text-center text-white">
+              <div className="animate-spin w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full mx-auto mb-4"></div>
+              <p className="text-lg font-medium">Connecting to stream...</p>
+            </div>
+          </div>
+        )}
+
+        {/* No Frame State */}
+        {streamStatus === 'streaming' && !currentFrame && (
+          <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50">
+            <div className="text-center text-white">
+              <PlayIcon className="w-12 h-12 mx-auto mb-4 text-gray-400" />
+              <p className="text-lg font-medium">Waiting for video feed...</p>
+            </div>
+          </div>
+        )}
+      </div>
+      
+      {/* Stream Info Footer */}
+      {streamStatus === 'streaming' && currentFrame && (
+        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black to-transparent p-4">
+          <div className="text-white text-xs opacity-75">
+            Last update: {new Date(lastUpdate).toLocaleTimeString()}
+          </div>
+        </div>
+      )}
+    </div>
   );
 };
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  camera: {
-    flex: 1,
-  },
-  overlay: {
-    flex: 1,
-    justifyContent: 'space-between',
-  },
-  header: {
-    padding: 20,
-  },
-  liveIndicator: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.7)',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-    alignSelf: 'flex-start',
-  },
-  liveDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#ef4444',
-    marginRight: 6,
-  },
-  liveText: {
-    color: 'white',
-    fontSize: 12,
-    fontWeight: 'bold',
-    marginRight: 8,
-  },
-  viewerText: {
-    color: 'white',
-    fontSize: 12,
-  },
-  controls: {
-    alignItems: 'center',
-    paddingBottom: 40,
-  },
-  startButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#ef4444',
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 25,
-    gap: 8,
-  },
-  stopButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#6b7280',
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 25,
-    gap: 8,
-  },
-  buttonText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  streamInfo: {
-    backgroundColor: 'rgba(0,0,0,0.7)',
-    padding: 12,
-    alignItems: 'center',
-  },
-  streamText: {
-    color: 'white',
-    fontSize: 12,
-    marginVertical: 2,
-  },
-});
-
-export default LiveStreamView;
+export default LiveStreamVideo;

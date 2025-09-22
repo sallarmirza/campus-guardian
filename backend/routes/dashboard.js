@@ -1,7 +1,7 @@
 // backend/routes/dashboard.js
 const express = require('express');
 const { authenticateToken } = require('../middleware/auth');
-const dashboardController = require('../controllers.js/dashboardController');
+const dashboardController = require('../controllers/dashboardController');
 
 const router = express.Router();
 
