@@ -1,0 +1,70 @@
+{
+  "name": "campus-guard",
+  "version": "1.0.0",
+  "description": "Smart surveillance and violation management system for university campuses",
+  "private": true,
+  "scripts": {
+  "install:all": "npm-run-all install:backend install:web install:mobile install:ml",
+  "install:backend": "cd backend && npm install",
+  "install:web": "cd web-admin && npm install",
+  "install:mobile": "cd mobile-app && npm install",
+  "install:ml": "cd ml-pipeline && python -m venv venv && pip install -r requirements.txt",
+
+  "dev:backend": "cd backend && npm run dev",
+  "dev:web": "cd web-admin && npm run dev",
+  "dev:mobile:android": "cd mobile-app && npm run android",
+  "dev:mobile:ios": "cd mobile-app && npm run ios",
+  "dev:ml": "cross-env-shell \"cd ml-pipeline && (source venv/bin/activate || venv\\Scripts\\activate) && python detection_service.py\"",
+  "dev:all": "concurrently \"npm run dev:backend\" \"npm run dev:web\" \"npm run dev:ml\"",
+
+  "build:all": "npm-run-all build:backend build:web",
+  "build:backend": "cd backend && npm run build",
+  "build:web": "cd web-admin && npm run build",
+
+  "test:all": "npm-run-all test:backend test:web test:mobile",
+  "test:backend": "cd backend && npm test",
+  "test:web": "cd web-admin && npm test",
+  "test:mobile": "cd mobile-app && npm test",
+
+  "lint:all": "npm-run-all lint:backend lint:web lint:mobile",
+  "lint:backend": "cd backend && npm run lint",
+  "lint:web": "cd web-admin && npm run lint",
+  "lint:mobile": "cd mobile-app && npm run lint",
+
+  "clean:all": "npm-run-all clean:backend clean:web clean:mobile clean:ml",
+  "clean:backend": "cd backend && rimraf node_modules package-lock.json",
+  "clean:web": "cd web-admin && rimraf node_modules package-lock.json .next",
+  "clean:mobile": "cd mobile-app && rimraf node_modules package-lock.json",
+  "clean:ml": "cd ml-pipeline && rimraf venv",
+
+  "setup": "npm run create:directories && npm run install:all",
+  "create:directories": "mkdirp web-admin mobile-app docs scripts infrastructure"
+}
+,
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "cross-env": "^7.0.3"
+  },
+  "keywords": [
+    "surveillance", 
+    "campus", 
+    "security", 
+    "ml", 
+    "react", 
+    "nodejs", 
+    "react-native",
+    "computer-vision",
+    "face-recognition"
+  ],
+  "author": "Campus Guardian Team",
+  "license": "MIT",
+  "engines": {
+    "node": ">=16.0.0",
+    "npm": ">=8.0.0"
+  },
+  "repository": {
+  "type": "git",
+  "url": "https://github.com/sallarmirza/campus-guardian.git"
+}
+
+}
